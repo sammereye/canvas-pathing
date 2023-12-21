@@ -1,11 +1,12 @@
 let intersections = [];
 let checks = 0;
+let points = [];
 let lines = [];
 let currentLine = {
   id: crypto.randomUUID(),
   path: []
 };
-let pointDistance = 10;
+let pointDistance = 60;
 
 function getDistanceBetweenTwoPoints(x1, y1, x2, y2) {
   return Math.hypot(x2 - x1, y2 - y1);
@@ -55,15 +56,40 @@ function checkForIntersections(lastPoint, newPoint, lines) {
 
         // console.log([backPoint.x, backPoint.y, forwardPoint.x, forwardPoint.y, lastPoint.x, lastPoint.y, newPoint.x, newPoint.y])
         
-        if (forwardPoint.x === lastPoint.x && forwardPoint.y === lastPoint.y) {
+        if ((backPoint.x === newPoint.x && backPoint.y === newPoint.y) || (forwardPoint.x === lastPoint.x && forwardPoint.y === lastPoint.y)) {
           console.log('skipped');
           continue;
         }
         
         let intersectingPoint = intersects(backPoint.x, backPoint.y, forwardPoint.x, forwardPoint.y, lastPoint.x, lastPoint.y, newPoint.x, newPoint.y);
-        if (intersectingPoint && !intersections.includes([intersectingPoint.x, intersectingPoint.y].join(","))) {
-          intersections.push([intersectingPoint.x, intersectingPoint.y].join(","));
-          console.log([backPoint.x, backPoint.y, forwardPoint.x, forwardPoint.y, lastPoint.x, lastPoint.y, newPoint.x, newPoint.y])
+        if (intersectingPoint) {
+          let intersectingPointId = crypto.randomUUID();
+          intersections.push({
+            id: intersectingPointId,
+            points: [
+              backPoint.id,
+              forwardPoint.id,
+              lastPoint.id,
+              newPoint.id
+            ]
+          });
+          
+          points.push({
+            id: intersectingPointId,
+            x: intersectingPoint.x,
+            y: intersectingPoint.y,
+            adjacentPoints: [
+              backPoint.id,
+              forwardPoint.id,
+              lastPoint.id,
+              newPoint.id
+            ]
+          });
+
+          newPoint.adjacentPoints.push(intersectingPointId);
+          lastPoint.adjacentPoints.push(intersectingPointId);
+          backPoint.adjacentPoints.push(intersectingPointId);
+          forwardPoint.adjacentPoints.push(intersectingPointId);
           document.getElementById("intersections").textContent = parseInt(document.getElementById("intersections").textContent) + 1;
         }
       }
@@ -82,10 +108,8 @@ function createCanvas(parent, width, height) {
 }
 
 function init(container, width, height, fillColor) {
-  let lastPoint = {
-    x: null,
-    y: null,
-  }
+  let lastPoint = null;
+  let nextPointId = null;
 
   var canvas = createCanvas(container, width, height);
   var ctx = canvas.context;
@@ -96,24 +120,19 @@ function init(container, width, height, fillColor) {
   };
   ctx.clearTo(fillColor || "#ddd");
 
-  /* // define a custom fillCircle method
-  ctx.fillCircle = function(x, y, radius, fillColor) {
-    this.fillStyle = fillColor;
-    this.beginPath();
-    this.moveTo(x, y);
-    this.arc(x, y, radius, 0, Math.PI * 2, false);
-    this.fill();
-  }; */
-
 
   // bind mouse events
   canvas.node.onmousemove = function(e) {
     var x = e.pageX - this.offsetLeft;
     var y = e.pageY - this.offsetTop;
 
-    if (lastPoint.x === null) {
-      lastPoint.x = x;
-      lastPoint.y = y;
+    if (lastPoint === null) {
+      lastPoint = {
+        id: null,
+        x: null,
+        y: null,
+        adjacentPoints: []
+      }
     }
 
     document.getElementById("x").textContent = x;
@@ -124,14 +143,20 @@ function init(container, width, height, fillColor) {
     }
 
     if (getDistanceBetweenTwoPoints(lastPoint.x, lastPoint.y, x, y) > pointDistance) {
+      let newPointId = nextPointId;
+      nextPointId = crypto.randomUUID();
       let newPoint = {
-        id: crypto.randomUUID(),
-        x: lastPoint.x,
-        y: lastPoint.y
+        id: newPointId,
+        x,
+        y,
+        adjacentPoints: [
+          lastPoint.id,
+          nextPointId
+        ].filter(x => x)
       }
-
+      
       checkForIntersections(lastPoint, newPoint, [...lines, currentLine]);
-      currentLine.path.push(newPoint)
+      currentLine.path.push(lastPoint)
       ctx.beginPath();
       ctx.moveTo(lastPoint.x, lastPoint.y);
       ctx.lineTo(x, y);
@@ -139,34 +164,41 @@ function init(container, width, height, fillColor) {
       ctx.lineWidth = 3;
       ctx.lineJoin = ctx.lineCap = 'round';
       ctx.stroke();
-      lastPoint.x = x;
-      lastPoint.y = y;
+      lastPoint = newPoint
     }
   };
 
   canvas.node.onmousedown = function(e) {
     var x = e.pageX - this.offsetLeft;
     var y = e.pageY - this.offsetTop;
-    lastPoint.x = x;
-    lastPoint.y = y;
+    nextPointId = crypto.randomUUID();
+    lastPoint = {
+      id: crypto.randomUUID(),
+      x,
+      y,
+      adjacentPoints: [
+        nextPointId
+      ]
+    }
 
     canvas.isDrawing = true;
   };
 
   canvas.node.onmouseup = function(e) {
     canvas.isDrawing = false;
-    currentLine.path.push({
-      x: lastPoint.x,
-      y: lastPoint.y
-    })
+    currentLine.path.push(lastPoint)
 
     lines.push(currentLine);
+    // remove last id from last point
+    currentLine.path[currentLine.path.length - 1].adjacentPoints.pop()
+    points = [...points, ...currentLine.path];
     currentLine = {
       id: crypto.randomUUID(),
       path: []
     };
-    lastPoint.x = null;
-    lastPoint.y = null;
+    lastPoint = null;
+    nextPointId = null;
+    console.log(points.map(x => x.adjacentPoints.length));
   };
 
   document.getElementById("moveCircle").onclick = async () => {
@@ -176,34 +208,38 @@ function init(container, width, height, fillColor) {
       let skipFirst = false;
       for (let i = 0; i < path.length; i++ ) {
         if (i + 1 < path.length) {
-          let p1 = path[i];
-          let p2 = path[i + 1];
+          let point1 = path[i];
+          let point2 = path[i + 1];
           
           let speed = 20;
-          let circleX = p1.x;
-          let circleY = p1.y;
-          let xDirection = p2.x > p1.x ? 1 : -1;
-          let yDirection = p2.y > p1.y ? 1 : -1;
-          const lineVec = getLineNormal(p1.x, p1.y, p2.x, p2.y);
+          let circleX = point1.x;
+          let circleY = point1.y;
+          let xDirection = point2.x > point1.x ? 1 : -1;
+          let yDirection = point2.y > point1.y ? 1 : -1;
+          const lineVec = getLineNormal(point1.x, point1.y, point2.x, point2.y);
   
           let j = 0;
           do {
             if (!(skipFirst && j === 0)) {
               let c1 = new Path2D;
               c1.arc(circleX, circleY, 6, 0, 2 * Math.PI);
-              ctx.fillStyle = "darkslategrey";
+              if (isPointAtIntersection(point1, point2)) {
+                ctx.fillStyle = "red";
+              } else {
+                ctx.fillStyle = "darkslategrey";
+              }
               ctx.fill(c1);
     
               let newCircleX = circleX + lineVec.x * speed;
-              if ((newCircleX >= p2.x && xDirection === 1) || (newCircleX <= p2.x && xDirection === -1)) {
-                circleX = p2.x;
+              if ((newCircleX >= point2.x && xDirection === 1) || (newCircleX <= point2.x && xDirection === -1)) {
+                circleX = point2.x;
               } else {
                 circleX = newCircleX;
               }
     
               let newCircleY = circleY + lineVec.y * speed;
-              if ((newCircleY >= p2.y && yDirection === 1) || (newCircleY <= p2.y && yDirection === -1)) {
-                circleY = p2.y;
+              if ((newCircleY >= point2.y && yDirection === 1) || (newCircleY <= point2.y && yDirection === -1)) {
+                circleY = point2.y;
               } else {
                 circleY = newCircleY;
               }
@@ -222,7 +258,7 @@ function init(container, width, height, fillColor) {
             }
 
             j++;
-          } while (!(circleX === p2.x && circleY === p2.y))
+          } while (!(circleX === point2.x && circleY === point2.y))
         }
       }
     }
@@ -264,4 +300,9 @@ function createSvgPathFromPath(path) {
   }
 
   return svgString;
+}
+
+function isPointAtIntersection(point1, point2) {
+  return intersections.filter(intersection => intersection.points.includes(point1.id) && intersection.points.includes(point2.id)).length > 0;
+  // return lines.filter(line => line.path.filter(point => point.id === point1.id || point.id === point2.id).length > 0).length > 0
 }
