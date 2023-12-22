@@ -87,9 +87,17 @@ function checkForIntersections(lastPoint, newPoint, lines) {
           });
 
           newPoint.adjacentPoints.push(intersectingPointId);
+          newPoint.adjacentPoints = newPoint.adjacentPoints.filter(x => x !== lastPoint.id);
+
           lastPoint.adjacentPoints.push(intersectingPointId);
+          lastPoint.adjacentPoints = lastPoint.adjacentPoints.filter(x => x !== newPoint.id);
+
           backPoint.adjacentPoints.push(intersectingPointId);
+          backPoint.adjacentPoints = backPoint.adjacentPoints.filter(x => x !== forwardPoint.id);
+
           forwardPoint.adjacentPoints.push(intersectingPointId);
+          forwardPoint.adjacentPoints = forwardPoint.adjacentPoints.filter(x => x !== backPoint.id);
+
           document.getElementById("intersections").textContent = parseInt(document.getElementById("intersections").textContent) + 1;
         }
       }
@@ -203,11 +211,12 @@ function init(container, width, height, fillColor) {
   };
 
   document.getElementById("moveCircle").onclick = async () => {
+    console.log(points.map(x => x.adjacentPoints.length))
     let lastVisitedPoint = null;
     let nextPoint = null;
     let randomPoint = points[Math.floor(Math.random() * points.length)];
     let currentPoint = randomPoint;
-    for (let i = 0; i < 100; i++) {
+    for (let i = 0; i < 250; i++) {
       let arrForNextPoint = currentPoint.adjacentPoints.filter(point => point !== lastVisitedPoint?.id);
       if (arrForNextPoint.length === 0) {
         arrForNextPoint = currentPoint.adjacentPoints;
@@ -216,7 +225,7 @@ function init(container, width, height, fillColor) {
       let randomNextPointId = arrForNextPoint[Math.floor(Math.random() * arrForNextPoint.length)];
       nextPoint = points.filter(x => x.id === randomNextPointId)[0];
 
-      let speed = 10;
+      let speed = 50;
       let circleX = currentPoint.x;
       let circleY = currentPoint.y;
       let xDirection = nextPoint.x > currentPoint.x ? 1 : -1;
@@ -227,7 +236,7 @@ function init(container, width, height, fillColor) {
       do {
         let c1 = new Path2D;
         c1.arc(circleX, circleY, 6, 0, 2 * Math.PI);
-        ctx.fillStyle = "darkslategrey";
+        ctx.fillStyle = "orange";
         ctx.fill(c1);
 
         let newCircleX = circleX + lineVec.x * speed;
@@ -246,11 +255,7 @@ function init(container, width, height, fillColor) {
 
         await sleep(7);
         ctx.clearTo("#ddd");
-        // let svgPath = createSvgPathFromPath(path);
-        // let p1 = new Path2D(svgPath);
-        // ctx.strokeStyle = "black";
-        // ctx.lineWidth = 3
-        // ctx.stroke(p1);
+        createSvgPathFromPath(ctx);
       } while (!(circleX === nextPoint.x && circleY === nextPoint.y))
 
       lastVisitedPoint = currentPoint;
@@ -281,17 +286,27 @@ function getLineNormal(x1, y1, x2, y2) {
   return {x: 0, y: 0}
 }
 
-function createSvgPathFromPath(path) {
-  let svgString = "";
-  for (let i = 0; i < path.length; i++) {
-    if (i === 0) {
-      svgString += "M";
-    } else {
-      svgString += "L";
-    }
+function createSvgPathFromPath(ctx) {
+  points.forEach(point => {
+    point.adjacentPoints.forEach(adjacentPointId => {
+      let adjacentPoint = points.filter(pnt => pnt.id === adjacentPointId)[0];
+      let newLineSvgString = `M${point.x} ${point.y} L${adjacentPoint.x} ${adjacentPoint.y}`;
+      let newLine = new Path2D(newLineSvgString);
+      ctx.strokeStyle = "black";
+      ctx.lineWidth = 3
+      ctx.stroke(newLine);
+    });
+  });
+  // let svgString = "";
+  // for (let i = 0; i < path.length; i++) {
+  //   if (i === 0) {
+  //     svgString += "M";
+  //   } else {
+  //     svgString += "L";
+  //   }
 
-    svgString += `${path[i].x} ${path[i].y} `
-  }
+  //   svgString += `${path[i].x} ${path[i].y} `
+  // }
 
-  return svgString;
+  // return svgString;
 }
